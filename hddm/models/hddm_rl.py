@@ -150,10 +150,6 @@ def wienerRL_like_NN(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, p_outlier=0):
         "w_outlier": 0.1,
     }
     wp = wiener_params
-    # for itr in wiener_params:
-    #     wiener_params[itr] = np.double(wiener_params[itr])
-    #     print(itr, type(wiener_params[itr]))
-    #print(">>> ", type(wiener_params['err']))
     response = x["response"].values.astype(int)
     q = x["q_init"].iloc[0]
     feedback = x["feedback"].values.astype(float)
