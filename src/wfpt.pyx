@@ -177,6 +177,7 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
     cdef np.ndarray[double, ndim=1] xs
     cdef np.ndarray[double, ndim=1] feedbacks
     cdef np.ndarray[long, ndim=1] responses
+    cdef np.ndarray[long, ndim=1] responses_qs
     cdef np.ndarray[long, ndim=1] unique = np.unique(split_by)
     cdef Py_ssize_t n_params = 4 #params.shape[0]
     cdef np.ndarray[float, ndim=2] data = np.zeros((size, n_params + 2), dtype = np.float32)
@@ -199,41 +200,44 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
         s_size = xs.shape[0]
         qs[0] = q
         qs[1] = q
+        
+        responses_qs = responses
+        responses_qs[responses_qs == -1] = 0
 
         # don't calculate pdf for first trial but still update q
-        if feedbacks[0] > qs[responses[0]]:
+        if feedbacks[0] > qs[responses_qs[0]]:
             alfa = (2.718281828459**pos_alfa) / (1 + 2.718281828459**pos_alfa)
         else:
             alfa = (2.718281828459**alpha) / (1 + 2.718281828459**alpha)
 
         # qs[1] is upper bound, qs[0] is lower bound. feedbacks is reward
         # received on current trial.
-        qs[responses[0]] = qs[responses[0]] + \
-            alfa * (feedbacks[0] - qs[responses[0]])
+        qs[responses_qs[0]] = qs[responses_qs[0]] + \
+            alfa * (feedbacks[0] - qs[responses_qs[0]])
 
         #data[0, 0:4] = np.array([0.5, a, z, t])
-        data[0, 0] = 0.5
+        data[0, 0] = 0.0
         # loop through all trials in current condition
         for i in range(1, s_size):
             # p = full_pdf(xs[i], ((qs[1] - qs[0]) * v), sv, a, z,
             #              sz, t, st, err, n_st, n_sz, use_adaptive, simps_err)
             # ["v", "a", "z", "t"] [rt. response]
-            v = (qs[0] - qs[1]) * 1 #scaling
+            #v = (qs[0] - qs[1]) * 1 #scaling
             #data[i, 0:4] = np.array([v, a, z, t])
-            data[i, 0] = v
+            data[i, 0] = (qs[1] - qs[0]) * v
 
             # get learning rate for current trial. if pos_alpha is not in
             # include it will be same as alpha so can still use this
             # calculation:
-            if feedbacks[i] > qs[responses[i]]:
+            if feedbacks[i] > qs[responses_qs[i]]:
                 alfa = (2.718281828459**pos_alfa) / (1 + 2.718281828459**pos_alfa)
             else:
                 alfa = (2.718281828459**alpha) / (1 + 2.718281828459**alpha)
 
             # qs[1] is upper bound, qs[0] is lower bound. feedbacks is reward
             # received on current trial.
-            qs[responses[i]] = qs[responses[i]] + \
-                alfa * (feedbacks[i] - qs[responses[i]])
+            qs[responses_qs[i]] = qs[responses_qs[i]] + \
+                alfa * (feedbacks[i] - qs[responses_qs[i]])
 
         data[:, 1:4] = np.tile([a, z, t], (size, 1)).astype(np.float32)
         data[:, n_params:] = np.stack([x, response], axis = 1)
