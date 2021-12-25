@@ -23,7 +23,7 @@ class HDDMrl(HDDM):
         self.dual = kwargs.pop("dual", False)
         self.alpha = kwargs.pop("alpha", True)
 
-
+        print("WienerRL")
         self.wfpt_rl_class = WienerRL_NN # WienerRL_NN
 
         super(HDDMrl, self).__init__(*args, **kwargs)

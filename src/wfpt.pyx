@@ -238,7 +238,7 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
             # received on current trial.
             qs[responses_qs[i]] = qs[responses_qs[i]] + \
                 alfa * (feedbacks[i] - qs[responses_qs[i]])
-
+        
         data[:, 1:4] = np.tile([a, z, t], (size, 1)).astype(np.float32)
         data[:, n_params:] = np.stack([x, response], axis = 1)
         sum_logp = np.sum(network.predict_on_batch(data))

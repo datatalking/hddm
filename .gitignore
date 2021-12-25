@@ -9,3 +9,11 @@ docs/build
 .eggs/
 .egg-info/
 HDDM.egg-info/
+
+
+hddm/.ipynb_checkpoints/
+hddm/examples/.ipynb_checkpoints/
+hddm/models/.ipynb_checkpoints/
+hddm/simulators/.ipynb_checkpoints/
+src/.ipynb_checkpoints/
+
