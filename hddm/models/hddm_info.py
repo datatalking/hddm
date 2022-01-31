@@ -109,6 +109,7 @@ class HDDM(HDDMBase):
             pass
         else:
             self.nn = False
+            self.slice_widths = model_config['ddm']["slice_widths"] #1
 
         if self.nn:
             self.slice_widths = model_config[self.model]["slice_widths"]

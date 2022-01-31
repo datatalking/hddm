@@ -181,9 +181,15 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
     cdef np.ndarray[long, ndim=1] unique = np.unique(split_by)
     cdef Py_ssize_t n_params = 4 #params.shape[0]
     cdef np.ndarray[float, ndim=2] data = np.zeros((size, n_params + 2), dtype = np.float32)
+    cdef float ll_min = -16.11809
 
     if not p_outlier_in_range(p_outlier):
         return -np.inf
+    
+    # Check for boundary violations -- if true, return -np.inf
+    if a < 0.3 or a > 2.5 or t < 0.001 or t > 2.0 or v < 0.001 or v > 1.0:
+        return -np.inf
+    
 
     if pos_alpha==100.00:
         pos_alfa = alpha
@@ -241,7 +247,12 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
         
         data[:, 1:4] = np.tile([a, z, t], (size, 1)).astype(np.float32)
         data[:, n_params:] = np.stack([x, response], axis = 1)
-        sum_logp = np.sum(network.predict_on_batch(data))
+        
+        
+        sum_logp = np.sum(np.core.umath.maximum(network.predict_on_batch(data), ll_min))
+        #sum_logp = np.sum(network.predict_on_batch(data))
+        
+        # log_p = np.sum(np.core.umath.maximum(network.predict_on_batch(data), ll_min))
         
     return sum_logp
 
