@@ -182,12 +182,13 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
     cdef Py_ssize_t n_params = 4 #params.shape[0]
     cdef np.ndarray[float, ndim=2] data = np.zeros((size, n_params + 2), dtype = np.float32)
     cdef float ll_min = -16.11809
+    cdef int cumm_s_size = 0
 
     if not p_outlier_in_range(p_outlier):
         return -np.inf
     
     # Check for boundary violations -- if true, return -np.inf
-    if a < 0.3 or a > 2.5 or t < 0.001 or t > 2.0 or v < 0.001 or v > 1.0:
+    if a < 0.3 or a > 2.5 or t < 0.001 or t > 2.0:
         return -np.inf
     
 
@@ -206,7 +207,7 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
         s_size = xs.shape[0]
         qs[0] = q
         qs[1] = q
-        
+
         responses_qs = responses
         responses_qs[responses_qs == -1] = 0
 
@@ -230,7 +231,10 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
             # ["v", "a", "z", "t"] [rt. response]
             #v = (qs[0] - qs[1]) * 1 #scaling
             #data[i, 0:4] = np.array([v, a, z, t])
-            data[i, 0] = (qs[1] - qs[0]) * v
+            data[cumm_s_size + i, 0] = (qs[1] - qs[0]) * v
+            # Check for boundary violations -- if true, return -np.inf
+            if data[cumm_s_size + i, 0] < -3.0 or data[cumm_s_size + i, 0] > 3.0:
+                return -np.inf
 
             # get learning rate for current trial. if pos_alpha is not in
             # include it will be same as alpha so can still use this
@@ -245,11 +249,13 @@ def wiener_like_rlddm_nn(np.ndarray[double, ndim=1] x,
             qs[responses_qs[i]] = qs[responses_qs[i]] + \
                 alfa * (feedbacks[i] - qs[responses_qs[i]])
         
-        data[:, 1:4] = np.tile([a, z, t], (size, 1)).astype(np.float32)
-        data[:, n_params:] = np.stack([x, response], axis = 1)
+        cumm_s_size += s_size
+
+    data[:, 1:4] = np.tile([a, z, t], (size, 1)).astype(np.float32)
+    data[:, n_params:] = np.stack([x, response], axis = 1)
         
         
-        sum_logp = np.sum(np.core.umath.maximum(network.predict_on_batch(data), ll_min))
+    sum_logp = np.sum(np.core.umath.maximum(network.predict_on_batch(data), ll_min))
         #sum_logp = np.sum(network.predict_on_batch(data))
         
         # log_p = np.sum(np.core.umath.maximum(network.predict_on_batch(data), ll_min))
