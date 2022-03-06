@@ -5,6 +5,7 @@ import pandas as pd
 from numpy.random import rand
 from scipy.stats import uniform, norm
 from copy import copy
+from hddm.simulators.basic_simulator import *
 
 
 def gen_single_params_set(include=()):
@@ -473,6 +474,242 @@ def gen_rand_data(params=None, n_fast_outliers=0, n_slow_outliers=0, **kwargs):
     data = add_outliers(data, n_fast=n_fast_outliers, n_slow=n_slow_outliers, seed=seed)
 
     return data, subj_params
+
+
+def gen_rand_rlddm_data_LAN(
+    param,
+    model,
+    size=1,
+    p_upper=1,
+    p_lower=0,
+    q_init=0.5,
+    pos_alpha=float("nan"),
+    subjs=1,
+    split_by=0,
+    mu_upper=1,
+    mu_lower=0,
+    sd_upper=0.1,
+    sd_lower=0.1,
+    binary_outcome=True,
+    uncertainty=False,
+):
+
+    if model == 'ddm':
+        # ["v", "a", "z", "t"] "alpha"
+        scaler = param[0]
+        a = param[1]
+        z = param[2]
+        t = param[3]
+        alpha = param[4]
+    elif model == 'angle':
+        # ["v", "a", "z", "t", "theta"] "alpha"
+        scaler = param[0]
+        a = param[1]
+        z = param[2]
+        t = param[3]
+        theta = param[4]
+        alpha = param[5]
+
+
+    all_data = []
+    tg = t
+    ag = a
+    alphag = alpha
+    pos_alphag = pos_alpha
+    scalerg = scaler
+    for s in range(0, subjs):
+        t = (
+            np.maximum(0.05, np.random.normal(loc=tg, scale=0.05, size=1))
+            if subjs > 1
+            else tg
+        )
+        a = (
+            np.maximum(0.05, np.random.normal(loc=ag, scale=0.15, size=1))
+            if subjs > 1
+            else ag
+        )
+        alpha = (
+            np.minimum(
+                np.minimum(
+                    np.maximum(0.001, np.random.normal(loc=alphag, scale=0.05, size=1)),
+                    alphag + alphag,
+                ),
+                1,
+            )
+            if subjs > 1
+            else alphag
+        )
+        scaler = (
+            np.random.normal(loc=scalerg, scale=0.25, size=1) if subjs > 1 else scalerg
+        )
+        if np.isnan(pos_alpha):
+            pos_alfa = alpha
+        else:
+            pos_alfa = (
+                np.maximum(0.001, np.random.normal(loc=pos_alphag, scale=0.05, size=1))
+                if subjs > 1
+                else pos_alphag
+            )
+        n = size
+        q_up = np.tile([q_init], n)
+        q_low = np.tile([q_init], n)
+        response = np.tile([0.5], n)
+        feedback = np.tile([0.5], n)
+        rt = np.tile([0], n)
+        if binary_outcome:
+            rew_up = np.random.binomial(1, p_upper, n).astype(float)
+            rew_low = np.random.binomial(1, p_lower, n).astype(float)
+        else:
+            rew_up = np.random.normal(mu_upper, sd_upper, n)
+            rew_low = np.random.normal(mu_lower, sd_lower, n)
+        sim_drift = np.tile([0], n)
+        subj_idx = np.tile([s], n)
+        d = {
+            "q_up": q_up,
+            "q_low": q_low,
+            "sim_drift": sim_drift,
+            "rew_up": rew_up,
+            "rew_low": rew_low,
+            "response": response,
+            "rt": rt,
+            "feedback": feedback,
+            "subj_idx": subj_idx,
+            "split_by": split_by,
+            "trial": 1,
+        }
+        df = pd.DataFrame(data=d)
+        df = df[
+            [
+                "q_up",
+                "q_low",
+                "sim_drift",
+                "rew_up",
+                "rew_low",
+                "response",
+                "rt",
+                "feedback",
+                "subj_idx",
+                "split_by",
+                "trial",
+            ]
+        ]
+
+        # Get sim_params for passing into the simulator
+        if model == 'ddm':
+            sim_params = np.array([df.loc[0, "sim_drift"], a, z, t])
+        elif model == 'angle':
+            sim_params = np.array([df.loc[0, "sim_drift"], a, z, t, theta])
+
+        # simulate model with given params
+        res = simulator(
+            sim_params,
+            model=model,
+            n_samples=1,
+            delta_t=0.001,  # n_trials
+            max_t=20,
+            no_noise=False,
+            bin_dim=None,
+            bin_pointwise=False,
+            )
+        # get the results in desired df format [rt, response] -- from np.array (1, 2)
+        tres = np.transpose(np.squeeze(np.array(list(res[0:2])), axis=1))
+        data = pd.DataFrame(tres, columns=['rt', 'response'])
+        # flip the responses to [1,0]
+        data.loc[data['response'] < 1, 'response'] = 0
+
+        df.loc[0, "response"] = data.response[0]
+        df.loc[0, "rt"] = data.rt[0]
+        if data.response[0] == 1.0:
+            df.loc[0, "feedback"] = df.loc[0, "rew_up"]
+            if df.loc[0, "feedback"] > df.loc[0, "q_up"]:
+                alfa = pos_alfa
+            else:
+                alfa = alpha
+        else:
+            df.loc[0, "feedback"] = df.loc[0, "rew_low"]
+            if df.loc[0, "feedback"] > df.loc[0, "q_low"]:
+                alfa = pos_alfa
+            else:
+                alfa = alpha
+
+        for i in range(1, n):
+            df.loc[i, "trial"] = i + 1
+            df.loc[i, "q_up"] = (
+                df.loc[i - 1, "q_up"] * (1 - df.loc[i - 1, "response"])
+            ) + (
+                (df.loc[i - 1, "response"])
+                * (
+                    df.loc[i - 1, "q_up"]
+                    + (alfa * (df.loc[i - 1, "rew_up"] - df.loc[i - 1, "q_up"]))
+                )
+            )
+            df.loc[i, "q_low"] = (
+                df.loc[i - 1, "q_low"] * (df.loc[i - 1, "response"])
+            ) + (
+                (1 - df.loc[i - 1, "response"])
+                * (
+                    df.loc[i - 1, "q_low"]
+                    + (alfa * (df.loc[i - 1, "rew_low"] - df.loc[i - 1, "q_low"]))
+                )
+            )
+            df.loc[i, "sim_drift"] = (df.loc[i, "q_up"] - df.loc[i, "q_low"]) * (scaler)
+
+            # Get sim_params for passing into the simulator
+            if model == 'ddm':
+                sim_params = np.array([df.loc[i, "sim_drift"], a, z, t])
+            elif model == 'angle':
+                sim_params = np.array([df.loc[i, "sim_drift"], a, z, t, theta])
+
+            # simulate model with given params
+            res = simulator(
+                sim_params,
+                model=model,
+                n_samples=1,
+                delta_t=0.001,  # n_trials
+                max_t=20,
+                no_noise=False,
+                bin_dim=None,
+                bin_pointwise=False,
+                )
+            # get the results in desired df format [rt, response] -- from np.array (1, 2)
+            tres = np.transpose(np.squeeze(np.array(list(res[0:2])), axis=1))
+            data = pd.DataFrame(tres, columns=['rt', 'response'])
+            # flip the responses to [1,0]
+            data.loc[data['response'] < 1, 'response'] = 0
+
+            df.loc[i, "response"] = data.response[0]
+            df.loc[i, "rt"] = data.rt[0]
+            if data.response[0] == 1.0:
+                df.loc[i, "feedback"] = df.loc[i, "rew_up"]
+                if df.loc[i, "feedback"] > df.loc[i, "q_up"]:
+                    alfa = pos_alfa
+                else:
+                    alfa = alpha
+            else:
+                df.loc[i, "feedback"] = df.loc[i, "rew_low"]
+                if df.loc[i, "feedback"] > df.loc[i, "q_low"]:
+                    alfa = pos_alfa
+                else:
+                    alfa = alpha
+
+        all_data.append(df)
+    all_data = pd.concat(all_data, axis=0)
+    all_data = all_data[
+        [
+            "q_up",
+            "q_low",
+            "sim_drift",
+            "response",
+            "rt",
+            "feedback",
+            "subj_idx",
+            "split_by",
+            "trial",
+        ]
+    ]
+
+    return all_data
+
 
 
 def gen_rand_rlddm_data(
