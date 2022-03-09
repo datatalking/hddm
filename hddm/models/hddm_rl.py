@@ -10,7 +10,7 @@ import hddm
 from kabuki.hierarchical import Knode
 from kabuki.utils import stochastic_from_dist
 from hddm.models import HDDM
-from wfpt import wiener_like_rlddm, wiener_like_rlddm_nn
+from wfpt import wiener_like_rlddm, wiener_like_rlddm_nn, TEST_wiener_like_rlddm_nn
 from functools import partial
 from hddm.torch.mlp_inference_class import load_torch_mlp
 
@@ -18,12 +18,14 @@ from hddm.torch.mlp_inference_class import load_torch_mlp
 class HDDMrl(HDDM):
     """HDDM model that can be used for two-armed bandit tasks."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, model=None, *args, **kwargs):
         self.non_centered = kwargs.pop("non_centered", False)
         self.dual = kwargs.pop("dual", False)
         self.alpha = kwargs.pop("alpha", True)
 
-        print("WienerRL")
+        self.model = model
+        print("> specified ssm : ", self.model)  
+        
         self.wfpt_rl_class = WienerRL_NN # WienerRL_NN
 
         super(HDDMrl, self).__init__(*args, **kwargs)
@@ -116,6 +118,7 @@ def wienerRL_like(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, p_outlier=0):
     q = x["q_init"].iloc[0]
     feedback = x["feedback"].values.astype(float)
     split_by = x["split_by"].values.astype(int)
+
     return wiener_like_rlddm(
         x["rt"].values,
         response,
@@ -139,8 +142,8 @@ def wienerRL_like(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, p_outlier=0):
 WienerRL = stochastic_from_dist("wienerRL", wienerRL_like)
 
 
-def wienerRL_like_NN(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, p_outlier=0):
-
+def wienerRL_like_NN(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, theta, p_outlier=0):
+    
     wiener_params = {
         "err": 1e-4,
         "n_st": 2,
@@ -155,32 +158,50 @@ def wienerRL_like_NN(x, v, alpha, pos_alpha, sv, a, z, sz, t, st, p_outlier=0):
     feedback = x["feedback"].values.astype(float)
     split_by = x["split_by"].values.astype(int)
 
-    return wiener_like_rlddm_nn(
+    #print("#$# ", self.model)
+    model = 'angle'
+    # [v, a, z, t]
+    params = np.array([v, a, z, t, theta])
+    return TEST_wiener_like_rlddm_nn(
+        model,
         x["rt"].values,
         response,
         feedback,
         split_by,
         q,
-        alpha,
+        params,
+        alpha, 
         pos_alpha,
-        v,
-        sv,
-        a,
-        z,
-        sz,
-        t,
-        st,
-        network = network_ddm,
-        p_outlier=p_outlier,
-        **wp
+        network = network_ssm,
+        p_outlier=p_outlier
     )
+
+    # return wiener_like_rlddm_nn(
+    #     x["rt"].values,
+    #     response,
+    #     feedback,
+    #     split_by,
+    #     q,
+    #     alpha,
+    #     pos_alpha,
+    #     v,
+    #     sv,
+    #     a,
+    #     z,
+    #     sz,
+    #     t,
+    #     st,
+    #     network = network_ssm,
+    #     p_outlier=p_outlier,
+    #     **wp
+    # )
 
 
 #WienerRL_NN = stochastic_from_dist("wienerRL_NN", wienerRL_like_NN)
 
 
 # load network here
-network_ddm = load_torch_mlp(model = 'ddm')
+network_ssm = load_torch_mlp(model = 'angle') 
 WienerRL_NN = stochastic_from_dist("wienerRL_NN", wienerRL_like_NN)
 
 # likelihood_ = hddm.likelihoods_mlp.make_mlp_likelihood(model='ddm') # **network_dict

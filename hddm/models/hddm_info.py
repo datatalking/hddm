@@ -108,8 +108,12 @@ class HDDM(HDDMBase):
         if hasattr(self, "nn"):
             pass
         else:
-            self.nn = False
-            self.slice_widths = model_config['ddm']["slice_widths"] #1
+            self.nn = True
+            self.network_type = 'mlp'
+            # self.is_group_model = True
+            # self.informative = False
+            # self.w_outlier = 0.1
+            self.slice_widths = model_config['angle']["slice_widths"] #1
 
         if self.nn:
             self.slice_widths = model_config[self.model]["slice_widths"]
